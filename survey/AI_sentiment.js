@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Terminal, Cpu, Shield, Send, Activity, ChevronRight, User, GitBranch, Layers, Download, CheckCircle, RefreshCw } from 'lucide-react';
+import { Terminal, Cpu, Shield, Send, Activity, ChevronRight, User, GitBranch, Layers, CheckCircle, RefreshCw } from 'lucide-react';
 
 // --- Utility Components ---
 
@@ -59,41 +59,6 @@ const StepIndicator = ({ currentStep, totalSteps }) => (
 );
 
 // --- Utility Functions ---
-
-/**
- * Creates a JSON file, names it, and triggers a browser download.
- * @param {object} data - The survey result object.
- */
-const downloadJson = (data) => {
-    let url;
-
-    try {
-        const result = {
-            metadata: {
-                timestamp: new Date().toISOString(),
-            },
-            responses: data,
-        };
-
-        const json = JSON.stringify(result, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
-        url = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `valicy_ai_sentiment_report_${new Date().toISOString().slice(0, 10)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    } catch (error) {
-        console.error('Failed to download JSON', error);
-        alert('Something went wrong while preparing your download. Please try again.');
-    } finally {
-        if (url) {
-            URL.revokeObjectURL(url);
-        }
-    }
-};
 
 // --- Survey Question Mapping ---
 
@@ -167,11 +132,12 @@ export default function App() {
     });
 
     const handleFinalSubmission = async () => {
+        if (loading) return;
+
         setLoading(true);
         setSubmissionStatus({ state: 'pending', message: 'Analyzing response and routing to admin dashboard...' });
 
         const payload = buildSubmissionPayload();
-        let didSendToDashboard = false;
 
         try {
             const controller = new AbortController();
@@ -190,21 +156,16 @@ export default function App() {
                 throw new Error(`Failed to sync to admin dashboard (${response.status})`);
             }
 
-            didSendToDashboard = true;
             setSubmissionStatus({ state: 'success', message: 'Synced to admin dashboard for analysis and visualization.' });
         } catch (error) {
-            console.error('Insight sync failed, keeping local copy only.', error);
+            console.error('Insight sync failed. Will remain locally until sync is restored.', error);
             setSubmissionStatus({
                 state: 'error',
-                message: 'Local copy saved. Unable to sync to admin dashboard right now.',
+                message: 'Unable to sync to admin dashboard right now. Please retry once connectivity is restored.',
             });
         } finally {
             setLoading(false);
-            setStep(5); // Move to the success/download screen
-
-            if (!didSendToDashboard) {
-                alert('We could not reach the admin dashboard. Please share the downloaded JSON with the analytics team.');
-            }
+            setStep(5); // Move to the success screen
         }
     };
 
@@ -493,27 +454,35 @@ export default function App() {
                                     <span className="text-green-700">STATUS:</span>
                                     <span className="text-green-700">{getSummary().text}</span>
                                 </div>
+                                {submissionStatus.state === 'pending' && (
+                                    <div className="flex items-center text-xs pt-2 border-t border-green-800 text-yellow-300 space-x-2">
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        <span>{submissionStatus.message}</span>
+                                    </div>
+                                )}
                                 {submissionStatus.state === 'success' && (
                                     <div className="flex items-center text-xs pt-2 border-t border-green-800 text-green-500 space-x-2">
                                         <CheckCircle size={14} />
-                                        <span>Routed to admin dashboard for visual insights.</span>
+                                        <span>{submissionStatus.message}</span>
                                     </div>
                                 )}
                                 {submissionStatus.state === 'error' && (
                                     <div className="flex items-center text-xs pt-2 border-t border-green-800 text-red-400 space-x-2">
                                         <Shield size={14} />
-                                        <span>Pending manual upload: share downloaded JSON with analytics.</span>
+                                        <span>{submissionStatus.message}</span>
                                     </div>
                                 )}
                             </div>
 
-                            <NeonButton onClick={() => downloadJson(buildSubmissionPayload())} className="w-full mb-4 bg-green-500 hover:bg-green-300">
-                                <div className="flex items-center justify-center space-x-3 text-black">
-                                    <Download size={18} />
-                                    <span className="text-sm">DOWNLOAD RAW DATA (.JSON)</span>
-                                </div>
-                            </NeonButton>
-                            
+                            {submissionStatus.state === 'error' && (
+                                <NeonButton onClick={handleFinalSubmission} disabled={loading} className="w-full mb-4 bg-green-500 hover:bg-green-300">
+                                    <div className="flex items-center justify-center space-x-3 text-black">
+                                        <RefreshCw size={18} className="animate-spin" />
+                                        <span className="text-sm">Retry Admin Sync</span>
+                                    </div>
+                                </NeonButton>
+                            )}
+
                             <button onClick={handleReset} className="w-1/2 py-2 text-green-700 hover:text-green-500 transition-colors duration-200 flex items-center justify-center space-x-2 mx-auto">
                                 <CheckCircle size={16} />
                                 <span className="text-sm">END SESSION</span>

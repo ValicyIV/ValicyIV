@@ -115,8 +115,9 @@ const TEXT_QUESTIONS = [
 
 export default function App() {
     // Step 0: Landing, 1: Identity, 2: Likert, 3: Text, 4: Submit, 5: Success
-    const [step, setStep] = useState(0); 
+    const [step, setStep] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [submissionStatus, setSubmissionStatus] = useState({ state: 'idle', message: '' });
     const totalSurveySteps = 4; // Steps 1, 2, 3, 4
 
     // Form State, initialized to match all survey questions
@@ -146,13 +147,65 @@ export default function App() {
         });
     };
 
-    const handleFinalSubmission = () => {
+    const buildSubmissionPayload = () => ({
+        respondent: {
+            department: formData.department,
+            role: formData.role,
+        },
+        sentimentScores: LIKERT_QUESTIONS.map(({ id, question }) => ({
+            id,
+            question,
+            score: formData[id],
+        })),
+        qualitative: TEXT_QUESTIONS.map(({ id, label }) => ({
+            id,
+            label,
+            response: formData[id],
+        })),
+        summary: getSummary(),
+        capturedAt: new Date().toISOString(),
+    });
+
+    const handleFinalSubmission = async () => {
         setLoading(true);
-        // Simulate processing delay before showing the download screen
-        setTimeout(() => {
+        setSubmissionStatus({ state: 'pending', message: 'Analyzing response and routing to admin dashboard...' });
+
+        const payload = buildSubmissionPayload();
+        let didSendToDashboard = false;
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+            const response = await fetch('/api/insights', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`Failed to sync to admin dashboard (${response.status})`);
+            }
+
+            didSendToDashboard = true;
+            setSubmissionStatus({ state: 'success', message: 'Synced to admin dashboard for analysis and visualization.' });
+        } catch (error) {
+            console.error('Insight sync failed, keeping local copy only.', error);
+            setSubmissionStatus({
+                state: 'error',
+                message: 'Local copy saved. Unable to sync to admin dashboard right now.',
+            });
+        } finally {
             setLoading(false);
             setStep(5); // Move to the success/download screen
-        }, 1500);
+
+            if (!didSendToDashboard) {
+                alert('We could not reach the admin dashboard. Please share the downloaded JSON with the analytics team.');
+            }
+        }
     };
 
     // Validation functions
@@ -200,7 +253,7 @@ export default function App() {
 
 
     return (
-        <div className="relative min-h-screen bg-black text-green-500 font-mono flex flex-col items-center justify-center selection:bg-green-500 selection:text-black">
+            <div className="relative min-h-screen bg-black text-green-500 font-mono flex flex-col items-center justify-center selection:bg-green-500 selection:text-black">
             
             {/* Font & Custom Styles Injection */}
             <style>{`
@@ -394,6 +447,18 @@ export default function App() {
                                             </div>
                                         </NeonButton>
                                     )}
+
+                                    {submissionStatus.state !== 'idle' && (
+                                        <div className={`text-sm font-rajdhani border p-3 ${
+                                            submissionStatus.state === 'success'
+                                                ? 'border-green-600 text-green-300 bg-green-900/20'
+                                                : submissionStatus.state === 'pending'
+                                                    ? 'border-yellow-600 text-yellow-200 bg-yellow-900/10'
+                                                    : 'border-red-600 text-red-300 bg-red-900/10'
+                                        }`}>
+                                            {submissionStatus.message}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -428,9 +493,21 @@ export default function App() {
                                     <span className="text-green-700">STATUS:</span>
                                     <span className="text-green-700">{getSummary().text}</span>
                                 </div>
+                                {submissionStatus.state === 'success' && (
+                                    <div className="flex items-center text-xs pt-2 border-t border-green-800 text-green-500 space-x-2">
+                                        <CheckCircle size={14} />
+                                        <span>Routed to admin dashboard for visual insights.</span>
+                                    </div>
+                                )}
+                                {submissionStatus.state === 'error' && (
+                                    <div className="flex items-center text-xs pt-2 border-t border-green-800 text-red-400 space-x-2">
+                                        <Shield size={14} />
+                                        <span>Pending manual upload: share downloaded JSON with analytics.</span>
+                                    </div>
+                                )}
                             </div>
 
-                            <NeonButton onClick={() => downloadJson(formData)} className="w-full mb-4 bg-green-500 hover:bg-green-300">
+                            <NeonButton onClick={() => downloadJson(buildSubmissionPayload())} className="w-full mb-4 bg-green-500 hover:bg-green-300">
                                 <div className="flex items-center justify-center space-x-3 text-black">
                                     <Download size={18} />
                                     <span className="text-sm">DOWNLOAD RAW DATA (.JSON)</span>

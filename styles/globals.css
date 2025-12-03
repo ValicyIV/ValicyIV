@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Rajdhani:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar styling for neon aesthetic */
+@layer utilities {
+  .scrollbar-neon {
+    scrollbar-width: thin;
+    scrollbar-color: #00ff41 #000000;
+  }
+}
+
+/* Webkit scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #00ff41;
+  border-radius: 4px;
+  border: 1px solid #000;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #00cc33;
+}
+
+/* Custom focus effects for inputs and textareas */
+@layer utilities {
+  .focus-neon {
+    transition: box-shadow 0.3s ease;
+  }
+  
+  .focus-neon:focus {
+    outline: none;
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+  }
+}
+
+/* Input and textarea focus styling */
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+textarea:focus {
+  transition: box-shadow 0.3s ease;
+  outline: none;
+  box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+}
+
+/* Selection styling */
+::selection {
+  background-color: #00ff41;
+  color: #000000;
+}
+
+::-moz-selection {
+  background-color: #00ff41;
+  color: #000000;
+}
+

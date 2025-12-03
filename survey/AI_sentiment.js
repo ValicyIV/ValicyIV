@@ -1,16 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { Terminal, Cpu, Shield, Send, Activity, ChevronRight, User, GitBranch, Layers, CheckCircle, RefreshCw } from 'lucide-react';
+
+// Dynamically import Spline to avoid SSR issues
+const Spline = dynamic(
+    () => import('@splinetool/react-spline').then((mod) => mod.default || mod),
+    { 
+        ssr: false,
+        loading: () => (
+            <div className="absolute inset-0 z-0 overflow-hidden bg-black">
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,65,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,65,0.05)_1px,transparent_1px)] bg-[size:40px_40px] [transform:perspective(500px)_rotateX(70deg)_translateY(-150px)_scale(2)] opacity-30"/>
+            </div>
+        )
+    }
+);
 
 // --- Utility Components ---
 
 /**
- * Renders the simulated 3D background grid and glow.
- * Replace the contents of this component with the actual Spline embed component 
- * once you have your Spline scene URL.
+ * Error Boundary component to catch Spline rendering errors
  */
-const SplineBackground = () => (
+class SplineErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+
+    static getDerivedStateFromError(error) {
+        return { hasError: true };
+    }
+
+    componentDidCatch(error, errorInfo) {
+        console.error('Spline Error Boundary caught an error:', error, errorInfo);
+        if (this.props.onError) {
+            this.props.onError(error);
+        }
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return this.props.fallback;
+        }
+
+        return this.props.children;
+    }
+}
+
+/**
+ * Renders the animated 3D Spline background.
+ * Replace the SPLINE_SCENE_URL with your actual Spline scene URL.
+ * You can find your scene URL in Spline by clicking "Export" > "Code" > "React" 
+ * or by using the URL format: https://prod.spline.design/[your-scene-id]/scene.splinecode
+ * 
+ * Alternatively, set NEXT_PUBLIC_SPLINE_SCENE_URL in your .env.local file
+ */
+const SPLINE_SCENE_URL = process.env.NEXT_PUBLIC_SPLINE_SCENE_URL || 'https://prod.spline.design/YOUR_SCENE_ID/scene.splinecode';
+
+// Fallback background component
+const FallbackBackground = () => (
     <div className="absolute inset-0 z-0 overflow-hidden bg-black">
-        {/* Simulated Cyberpunk Grid and Glow */}
+        {/* Simulated Cyberpunk Grid and Glow (Fallback) */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,65,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,65,0.05)_1px,transparent_1px)] bg-[size:40px_40px] [transform:perspective(500px)_rotateX(70deg)_translateY(-150px)_scale(2)] opacity-30"/>
         
         {/* Central 3D Object Simulation */}
@@ -24,6 +73,79 @@ const SplineBackground = () => (
         <div className="absolute bottom-0 w-full h-32 bg-gradient-to-t from-black to-transparent" />
     </div>
 );
+
+const SplineBackground = () => {
+    const [splineError, setSplineError] = useState(false);
+    const [isLoaded, setIsLoaded] = useState(false);
+    const loadTimeoutRef = useRef(null);
+    const isLoadedRef = useRef(false); // Ref to track current loaded state for timeout callback
+
+    // Check if URL is configured
+    const isUrlConfigured = !SPLINE_SCENE_URL.includes('YOUR_SCENE_ID');
+
+    // Set up timeout to detect if Spline fails to load (15 seconds)
+    useEffect(() => {
+        // Don't set timeout if URL not configured, already loaded, or error occurred
+        if (!isUrlConfigured || splineError || isLoaded) {
+            return;
+        }
+
+        loadTimeoutRef.current = setTimeout(() => {
+            // Use ref to check current loaded state (avoids stale closure issue)
+            if (!isLoadedRef.current) {
+                console.warn('Spline scene failed to load within timeout period');
+                setSplineError(true);
+            }
+        }, 15000);
+
+        return () => {
+            if (loadTimeoutRef.current) {
+                clearTimeout(loadTimeoutRef.current);
+            }
+        };
+    }, [isUrlConfigured, isLoaded, splineError]);
+
+    // Keep ref in sync with state
+    useEffect(() => {
+        isLoadedRef.current = isLoaded;
+    }, [isLoaded]);
+
+    const handleLoad = (splineApp) => {
+        setIsLoaded(true);
+        isLoadedRef.current = true; // Update ref immediately
+        if (loadTimeoutRef.current) {
+            clearTimeout(loadTimeoutRef.current);
+        }
+    };
+
+    const handleErrorBoundaryError = () => {
+        setSplineError(true);
+    };
+
+    // Fallback to simulated background if Spline fails to load or URL is not set
+    if (splineError || !isUrlConfigured) {
+        return <FallbackBackground />;
+    }
+
+    return (
+        <SplineErrorBoundary 
+            fallback={<FallbackBackground />}
+            onError={handleErrorBoundaryError}
+        >
+            <div className="absolute inset-0 z-0 overflow-hidden bg-black">
+                {/* Note: @splinetool/react-spline only supports 'onLoad', not 'onError' */}
+                {/* Error handling is done via SplineErrorBoundary wrapper above */}
+                <Spline 
+                    scene={SPLINE_SCENE_URL}
+                    onLoad={handleLoad}
+                    style={{ width: '100%', height: '100%' }}
+                />
+                {/* Footer Gradient to fade out the effect */}
+                <div className="absolute bottom-0 w-full h-32 bg-gradient-to-t from-black to-transparent pointer-events-none" />
+            </div>
+        </SplineErrorBoundary>
+    );
+};
 
 /**
  * Standard button component with the neon gaming aesthetic.
@@ -83,6 +205,8 @@ export default function App() {
     const [step, setStep] = useState(0);
     const [loading, setLoading] = useState(false);
     const [submissionStatus, setSubmissionStatus] = useState({ state: 'idle', message: '' });
+    const [submittedSummary, setSubmittedSummary] = useState(null); // Store the summary that was sent to backend
+    const [splineResetKey, setSplineResetKey] = useState(0); // Key to force SplineBackground remount on reset
     const totalSurveySteps = 4; // Steps 1, 2, 3, 4
 
     // Form State, initialized to match all survey questions
@@ -110,6 +234,10 @@ export default function App() {
         setFormData({
             department: '', role: '', optimism: 0, efficiency: 0, security: 0, quality: 0, ethics: 0, useCases: '', roadblocks: '', blueSky: '',
         });
+        setSubmittedSummary(null);
+        setSubmissionStatus({ state: 'idle', message: '' }); // Reset submission status
+        // Reset Spline background by forcing remount with new key
+        setSplineResetKey(prev => prev + 1);
     };
 
     const buildSubmissionPayload = () => ({
@@ -138,6 +266,8 @@ export default function App() {
         setSubmissionStatus({ state: 'pending', message: 'Analyzing response and routing to admin dashboard...' });
 
         const payload = buildSubmissionPayload();
+        // Store the summary that was sent to backend for display on success screen
+        setSubmittedSummary(payload.summary);
 
         try {
             const controller = new AbortController();
@@ -216,23 +346,12 @@ export default function App() {
     return (
             <div className="relative min-h-screen bg-black text-green-500 font-mono flex flex-col items-center justify-center selection:bg-green-500 selection:text-black">
             
-            {/* Font & Custom Styles Injection */}
+            {/* Font imports - kept inline to ensure fonts load before component renders */}
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Rajdhani:wght@400;600&display=swap');
-                .font-orbitron { font-family: 'Orbitron', sans-serif; }
-                .font-rajdhani { font-family: 'Rajdhani', sans-serif; }
-                
-                /* Custom styling for the scrollbar to match the aesthetic */
-                ::-webkit-scrollbar { width: 8px; }
-                ::-webkit-scrollbar-track { background: #000000; }
-                ::-webkit-scrollbar-thumb { background-color: #00ff41; border-radius: 4px; border: 1px solid #000; }
-
-                /* Custom styling for the input focus glow */
-                input[type=text], textarea { transition: box-shadow 0.3s ease; }
-
             `}</style>
 
-            <SplineBackground />
+            <SplineBackground key={splineResetKey} />
 
             {/* Main HUD Container (Z-10 ensures it's above the background) */}
             <div className="relative z-10 w-full max-w-lg md:max-w-xl p-4">
@@ -446,13 +565,13 @@ export default function App() {
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-green-600 flex items-center space-x-2"><Activity size={16}/><span>AVG SENTIMENT:</span></span>
-                                    <span className={`font-bold ${getSummary().avg >= 4 ? 'text-green-400' : getSummary().avg < 2.5 ? 'text-red-400' : 'text-yellow-400'}`}>
-                                        {getSummary().avg} / 5.0
+                                    <span className={`font-bold ${(submittedSummary || getSummary()).avg >= 4 ? 'text-green-400' : (submittedSummary || getSummary()).avg < 2.5 ? 'text-red-400' : 'text-yellow-400'}`}>
+                                        {(submittedSummary || getSummary()).avg} / 5.0
                                     </span>
                                 </div>
                                 <div className="flex justify-between text-xs pt-2 border-t border-green-800">
                                     <span className="text-green-700">STATUS:</span>
-                                    <span className="text-green-700">{getSummary().text}</span>
+                                    <span className="text-green-700">{(submittedSummary || getSummary()).text}</span>
                                 </div>
                                 {submissionStatus.state === 'pending' && (
                                     <div className="flex items-center text-xs pt-2 border-t border-green-800 text-yellow-300 space-x-2">

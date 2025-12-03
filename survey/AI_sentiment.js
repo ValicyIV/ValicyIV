@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Terminal, Cpu, Shield, Send, Activity, ChevronRight, User, GitBranch, Zap, Layers, Download, CheckCircle, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Terminal, Cpu, Shield, Send, Activity, ChevronRight, User, GitBranch, Layers, Download, CheckCircle, RefreshCw } from 'lucide-react';
 
 // --- Utility Components ---
 
@@ -65,24 +65,34 @@ const StepIndicator = ({ currentStep, totalSteps }) => (
  * @param {object} data - The survey result object.
  */
 const downloadJson = (data) => {
-    const result = {
-        metadata: {
-            timestamp: new Date().toISOString(),
-        },
-        responses: data,
-    };
-    
-    const json = JSON.stringify(result, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `valicy_ai_sentiment_report_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    let url;
+
+    try {
+        const result = {
+            metadata: {
+                timestamp: new Date().toISOString(),
+            },
+            responses: data,
+        };
+
+        const json = JSON.stringify(result, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `valicy_ai_sentiment_report_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } catch (error) {
+        console.error('Failed to download JSON', error);
+        alert('Something went wrong while preparing your download. Please try again.');
+    } finally {
+        if (url) {
+            URL.revokeObjectURL(url);
+        }
+    }
 };
 
 // --- Survey Question Mapping ---
@@ -123,7 +133,7 @@ export default function App() {
         blueSky: '',
     });
 
-    const handleNext = () => setStep(step + 1);
+    const handleNext = () => setStep(prev => Math.min(prev + 1, 5));
 
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -146,9 +156,14 @@ export default function App() {
     };
 
     // Validation functions
-    const isStep1Complete = formData.department && formData.role;
+    const trimmedDepartment = formData.department.trim();
+    const trimmedRole = formData.role.trim();
+    const trimmedUseCases = formData.useCases.trim();
+    const trimmedRoadblocks = formData.roadblocks.trim();
+
+    const isStep1Complete = trimmedDepartment && trimmedRole;
     const isStep2Complete = LIKERT_QUESTIONS.every(q => formData[q.id] > 0);
-    const isStep3Complete = formData.useCases && formData.roadblocks; // Making two of the three text fields mandatory for structured analysis
+    const isStep3Complete = trimmedUseCases && trimmedRoadblocks; // Making two of the three text fields mandatory for structured analysis
 
     // Render the Likert selector grid
     const renderLikertGrid = () => (

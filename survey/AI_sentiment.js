@@ -507,7 +507,7 @@ export default function App() {
                                 )}
                             </div>
 
-                            <NeonButton onClick={() => downloadJson(formData)} className="w-full mb-4 bg-green-500 hover:bg-green-300">
+                            <NeonButton onClick={() => downloadJson(buildSubmissionPayload())} className="w-full mb-4 bg-green-500 hover:bg-green-300">
                                 <div className="flex items-center justify-center space-x-3 text-black">
                                     <Download size={18} />
                                     <span className="text-sm">DOWNLOAD RAW DATA (.JSON)</span>

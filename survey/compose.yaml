@@ -1,0 +1,21 @@
+services:
+  js-app:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    ports:
+      - "3000:3000" # Next.js app exposed on port 3000
+    # env_file: ./.env  # Uncomment if .env file exists
+    # No external database or cache detected in README or code
+    # If you add a database, configure it here and add depends_on
+    # volumes: [] # No persistent volumes needed for this app
+    # networks: [appnet] # Uncomment if you add more services that need networking
+
+# No external services (database, cache, etc.) detected in README or code
+# If you add a database, cache, or other service, add it below and configure networking
+
+# networks:
+#   appnet:
+#     driver: bridge

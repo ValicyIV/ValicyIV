@@ -2,7 +2,7 @@
  * Tests for /api/insights endpoint
  */
 import { createMocks } from 'node-mocks-http'
-import handler from './insights'
+import handler from './pages/api/insights'
 
 describe('/api/insights', () => {
   const validPayload = {

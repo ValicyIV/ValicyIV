@@ -4,7 +4,7 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import App from '../../survey/AI_sentiment'
+import App from '../../AI_sentiment'
 
 // Mock lucide-react icons
 jest.mock('lucide-react', () => ({

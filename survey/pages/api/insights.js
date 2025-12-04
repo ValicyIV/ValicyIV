@@ -5,77 +5,79 @@
  */
 
 export default async function handler(req, res) {
-  // Only allow POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({
+      error: 'Method not allowed',
+      message: 'Only POST requests are supported',
+    })
   }
 
   try {
-    const payload = req.body;
+    const payload = req.body
 
-    // Validate that the payload contains the required structure
-    if (!payload || !payload.summary) {
-      return res.status(400).json({ 
-        error: 'Invalid payload: missing summary data',
-        message: 'Payload must include summary with avg and text fields'
-      });
+    if (!payload) {
+      return res.status(400).json({
+        error: 'Bad request',
+        message: 'Request body is required',
+      })
     }
 
-    // Extract the summary data that was calculated client-side
-    const { summary, respondent, sentimentScores, qualitative, capturedAt } = payload;
+    const errors = []
 
-    // Validate summary structure
-    if (!summary.avg || !summary.text) {
-      return res.status(400).json({ 
-        error: 'Invalid summary: missing avg or text',
-        message: 'Summary must include avg (average sentiment) and text (alignment label)'
-      });
+    const { respondent, sentimentScores, qualitative, summary, capturedAt } = payload
+
+    if (!respondent || typeof respondent !== 'object') {
+      errors.push('Missing or invalid "respondent" field')
+    } else {
+      if (!respondent.department || typeof respondent.department !== 'string') {
+        errors.push('Missing or invalid "respondent.department" field')
+      }
+      if (!respondent.role || typeof respondent.role !== 'string') {
+        errors.push('Missing or invalid "respondent.role" field')
+      }
     }
 
-    // Log the received data (in production, you would store this in a database)
-    console.log('Received survey insights:', {
-      respondent,
-      summary: {
-        averageSentiment: summary.avg,
-        alignmentLabel: summary.text
-      },
-      sentimentScores: sentimentScores?.length || 0,
-      qualitativeResponses: qualitative?.length || 0,
-      capturedAt
-    });
+    if (!Array.isArray(sentimentScores) || sentimentScores.length === 0) {
+      errors.push('Missing or invalid "sentimentScores" array')
+    }
 
-    // TODO: Store the data in your database/backend system
-    // Example:
-    // await db.surveyResponses.create({
-    //   respondent,
-    //   sentimentScores,
-    //   qualitative,
-    //   summary: {
-    //     averageSentiment: parseFloat(summary.avg),
-    //     alignmentLabel: summary.text
-    //   },
-    //   capturedAt: new Date(capturedAt)
-    // });
+    if (!Array.isArray(qualitative) || qualitative.length === 0) {
+      errors.push('Missing or invalid "qualitative" array')
+    }
 
-    // Return success response
-    // The summary data (avg and text) is now available for your dashboard/backend to use
-    return res.status(200).json({ 
+    if (!summary || typeof summary !== 'object') {
+      errors.push('Missing or invalid "summary" field')
+    } else {
+      if (!summary.avg || typeof summary.avg !== 'string') {
+        errors.push('Missing or invalid "summary.avg" field')
+      }
+      if (!summary.text || typeof summary.text !== 'string') {
+        errors.push('Missing or invalid "summary.text" field')
+      }
+    }
+
+    if (!capturedAt || typeof capturedAt !== 'string') {
+      errors.push('Missing or invalid "capturedAt" timestamp')
+    }
+
+    if (errors.length > 0) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: errors,
+      })
+    }
+
+    return res.status(200).json({
       success: true,
-      message: 'Insights received and processed',
-      summary: {
-        averageSentiment: summary.avg,
-        alignmentLabel: summary.text
-      },
-      // Echo back the summary to confirm it was received correctly
-      receivedAt: new Date().toISOString()
-    });
-
+      message: 'Insight data received successfully',
+      timestamp: new Date().toISOString(),
+    })
   } catch (error) {
-    console.error('Error processing insights:', error);
-    return res.status(500).json({ 
+    console.error('Error processing submission', error)
+    return res.status(500).json({
       error: 'Internal server error',
-      message: 'Failed to process insights'
-    });
+      message: 'An error occurred while processing the submission',
+    })
   }
 }
 

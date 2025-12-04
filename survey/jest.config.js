@@ -14,8 +14,8 @@ const customJestConfig = {
   },
   testPathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/node_modules/'],
   collectCoverageFrom: [
-    'pages/**/*.{js,jsx}',
-    'survey/**/*.{js,jsx}',
+    'pages/**/*.{ts,tsx}',
+    'components/**/*.{ts,tsx}',
     '!**/*.d.ts',
     '!**/node_modules/**',
     '!**/.next/**',

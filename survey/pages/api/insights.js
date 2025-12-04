@@ -13,15 +13,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const payload = req.body
+    const hasUsableBody =
+      req.body &&
+      typeof req.body === 'object' &&
+      Object.values(req.body).some((value) => value !== null && value !== undefined)
 
-    if (!payload) {
+    if (!hasUsableBody) {
       return res.status(400).json({
         error: 'Bad request',
         message: 'Request body is required',
       })
     }
 
+    const payload = req.body
     const errors = []
 
     const { respondent, sentimentScores, qualitative, summary, capturedAt } = payload
@@ -37,7 +41,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (!Array.isArray(sentimentScores) || sentimentScores.length === 0) {
+    if (!Array.isArray(sentimentScores) || sentimentScores.length < 2) {
       errors.push('Missing or invalid "sentimentScores" array')
     }
 

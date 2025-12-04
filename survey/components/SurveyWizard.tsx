@@ -6,12 +6,15 @@ import {
   ChevronRight,
   ClipboardList,
   ShieldCheck,
-  Sparkles,
   TrendingUp,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { z } from 'zod';
 import { logEvent } from '../lib/logger';
+
+const totalSteps = 5;
+const adoptionStatuses = ['Yes', 'No', 'Needs support'] as const;
+type AdoptionStatus = (typeof adoptionStatuses)[number];
 
 const departments = ['Engineering', 'Product', 'Design', 'Data', 'Marketing', 'Sales', 'People'];
 const locations = ['Remote', 'Hybrid', 'On-site'];
@@ -54,24 +57,39 @@ const qualitativeQuestions = [
   {
     id: 'risks',
     label: 'Risks to avoid',
-    placeholder: 'Where could AI adoption go wrong for your team? (privacy, bias, data leakage, etc.)',
+    placeholder: 'Where could AI adoption go wrong for your team? Mention failure modes or edge cases.',
   },
   {
     id: 'training',
     label: 'Enablement request',
-    placeholder: 'What training or guardrails would make you comfortable adopting AI sooner?',
+    placeholder: 'What training, policies, or guardrails would make you comfortable adopting AI sooner?',
   },
 ];
 
-const baseSchema = z.object({
+const adoptionChecks = [
+  {
+    id: 'automationReady',
+    title: 'Automation-ready workflows',
+    helper: 'Data sources are stable, documented, and monitored for drift.',
+  },
+  {
+    id: 'securityAligned',
+    title: 'Security alignment',
+    helper: 'You know what is safe to share, what to redact, and escalation paths.',
+  },
+] as const;
+
+const submissionSchema = z.object({
   department: z.string().min(2),
   role: z.string().min(2),
   location: z.string().min(2),
   tenure: z.string().min(2),
-  sentiment: z.record(z.number().min(1).max(5)),
+  sentiment: z
+    .record(z.number().min(1).max(5))
+    .refine((val) => Object.keys(val).length >= 3, { message: 'At least 3 sentiment signals required' }),
   adoption: z.object({
-    automationReady: z.boolean(),
-    securityAligned: z.boolean(),
+    automationReady: z.enum(adoptionStatuses),
+    securityAligned: z.enum(adoptionStatuses),
   }),
   qualitative: z.object({
     priorityUseCase: z.string().min(10),
@@ -81,7 +99,16 @@ const baseSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
 });
 
-export type SurveyForm = z.infer<typeof baseSchema>;
+type SurveyForm = {
+  department: string;
+  role: string;
+  location: string;
+  tenure: string;
+  sentiment: Record<string, number>;
+  adoption: Record<(typeof adoptionChecks)[number]['id'], AdoptionStatus | ''>;
+  qualitative: Record<(typeof qualitativeQuestions)[number]['id'], string>;
+  email: string;
+};
 
 const initialForm: SurveyForm = {
   department: '',
@@ -90,8 +117,8 @@ const initialForm: SurveyForm = {
   tenure: '',
   sentiment: {},
   adoption: {
-    automationReady: false,
-    securityAligned: false,
+    automationReady: '',
+    securityAligned: '',
   },
   qualitative: {
     priorityUseCase: '',
@@ -103,8 +130,8 @@ const initialForm: SurveyForm = {
 
 const partialValidators: Record<number, (data: SurveyForm) => boolean> = {
   0: (data) => data.department.length > 0 && data.role.length > 1 && data.location.length > 0 && data.tenure.length > 0,
-  1: (data) => likertQuestions.every((q) => data.sentiment[q.id] && data.sentiment[q.id] >= 1),
-  2: (data) => data.adoption.automationReady && data.adoption.securityAligned,
+  1: (data) => Object.keys(data.sentiment).length >= 3,
+  2: (data) => adoptionChecks.every((check) => data.adoption[check.id]?.length > 0),
   3: (data) =>
     qualitativeQuestions.every((q) => data.qualitative[q.id as keyof SurveyForm['qualitative']]?.length >= 10) &&
     (!data.email || z.string().email().safeParse(data.email).success),
@@ -177,7 +204,7 @@ export function SurveyWizard() {
   const [serverMessage, setServerMessage] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const progress = useMemo(() => ((step + 1) / 5) * 100, [step]);
+  const progress = useMemo(() => ((step + 1) / totalSteps) * 100, [step]);
 
   const summary = useMemo(() => {
     const scores = Object.values(form.sentiment);
@@ -197,7 +224,7 @@ export function SurveyWizard() {
       return;
     }
     setServerError(null);
-    setStep((prev) => Math.min(prev + 1, 4));
+    setStep((prev) => Math.min(prev + 1, totalSteps - 1));
   };
 
   const handleBack = () => {
@@ -206,7 +233,7 @@ export function SurveyWizard() {
   };
 
   const handleSubmit = async () => {
-    const validation = baseSchema.safeParse(form);
+    const validation = submissionSchema.safeParse(form);
     if (!validation.success) {
       setServerError('Some answers are incomplete or invalid.');
       return;
@@ -254,9 +281,9 @@ export function SurveyWizard() {
         throw new Error(data.message || 'Submission failed');
       }
 
-      setServerMessage('Responses captured. Thanks for strengthening the AI roadmap!');
+      setServerMessage('Submission complete. Thanks for strengthening the AI roadmap!');
       setServerError(null);
-      setStep(4);
+      setStep(totalSteps - 1);
       logEvent('submit:success', { alignment: summary.alignment });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -286,15 +313,6 @@ export function SurveyWizard() {
               <p className="text-sm text-emerald-100/70">
                 Calibrate readiness, surface risks, and prioritize the next wave of AI co-pilot experiments.
               </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-400/30">
-                <Sparkles />
-              </div>
-              <div>
-                <p className="text-sm text-emerald-100/70">Confidence index</p>
-                <p className="text-2xl font-semibold text-white">{summary.average}</p>
-              </div>
             </div>
           </div>
           <div className="mt-6 h-2 overflow-hidden rounded-full bg-emerald-500/10">
@@ -422,73 +440,41 @@ export function SurveyWizard() {
             {step === 2 && (
               <StepShell
                 title="Risk & readiness checks"
-                helper="Two quick checkpoints before we greenlight experiments."
+                helper="Quick checkpoints to understand where support is needed."
                 icon={<Activity className="h-6 w-6" />}
               >
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-900/20 p-4">
-                    <div className="flex items-center gap-2 text-emerald-100">
-                      <CheckCircle2 className="h-5 w-5" />
-                      <p className="text-sm font-semibold">Automation ready</p>
+                  {adoptionChecks.map((check) => (
+                    <div key={check.id} className="space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-900/20 p-4">
+                      <div className="flex items-center gap-2 text-emerald-100">
+                        <CheckCircle2 className="h-5 w-5" />
+                        <p className="text-sm font-semibold">{check.title}</p>
+                      </div>
+                      <p className="text-xs text-emerald-100/70">{check.helper}</p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        {adoptionStatuses.map((label) => (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() =>
+                              updateField('adoption', {
+                                ...form.adoption,
+                                [check.id]: label,
+                              })
+                            }
+                            className={clsx(
+                              'rounded-xl border px-3 py-2 text-xs font-semibold transition',
+                              form.adoption[check.id] === label
+                                ? 'border-emerald-400 bg-emerald-500 text-black'
+                                : 'border-emerald-500/30 bg-emerald-900/30 text-emerald-100 hover:border-emerald-400',
+                            )}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <p className="text-xs text-emerald-100/70">
-                      Data sources for your workflows are stable, documented, and monitored.
-                    </p>
-                    <div className="flex gap-2">
-                      {['Yes', 'Not yet'].map((label) => (
-                        <button
-                          key={label}
-                          type="button"
-                          onClick={() =>
-                            updateField('adoption', {
-                              ...form.adoption,
-                              automationReady: label === 'Yes',
-                            })
-                          }
-                          className={clsx(
-                            'flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition',
-                            form.adoption.automationReady === (label === 'Yes')
-                              ? 'border-emerald-400 bg-emerald-500 text-black'
-                              : 'border-emerald-500/30 bg-emerald-900/30 text-emerald-100 hover:border-emerald-400',
-                          )}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 rounded-2xl border border-emerald-500/20 bg-emerald-900/20 p-4">
-                    <div className="flex items-center gap-2 text-emerald-100">
-                      <ShieldCheck className="h-5 w-5" />
-                      <p className="text-sm font-semibold">Security alignment</p>
-                    </div>
-                    <p className="text-xs text-emerald-100/70">
-                      You understand how to avoid sensitive data leakage and follow review protocols.
-                    </p>
-                    <div className="flex gap-2">
-                      {['Yes', 'Not yet'].map((label) => (
-                        <button
-                          key={label}
-                          type="button"
-                          onClick={() =>
-                            updateField('adoption', {
-                              ...form.adoption,
-                              securityAligned: label === 'Yes',
-                            })
-                          }
-                          className={clsx(
-                            'flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition',
-                            form.adoption.securityAligned === (label === 'Yes')
-                              ? 'border-emerald-400 bg-emerald-500 text-black'
-                              : 'border-emerald-500/30 bg-emerald-900/30 text-emerald-100 hover:border-emerald-400',
-                          )}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </StepShell>
             )}
@@ -534,44 +520,33 @@ export function SurveyWizard() {
 
             {step === 4 && (
               <StepShell
-                title="Submission complete"
-                helper="We combined your answers into a readiness snapshot."
+                title="Thanks for your perspective"
+                helper="Your input will be compiled, analyzed, and visualized on the internal dashboard."
                 icon={<CheckCircle2 className="h-6 w-6" />}
               >
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-900/30 p-4">
-                    <p className="text-sm text-emerald-100">Alignment level</p>
-                    <p className="text-2xl font-semibold text-white">{summary.alignment}</p>
-                    <p className="text-xs text-emerald-100/60">Average score {summary.average}</p>
+                <div className="space-y-4">
+                  <p className="text-sm text-emerald-100/80">
+                    We have logged your signals and qualitative notes. Program owners will review them alongside other
+                    respondents to prioritize enablement, safeguards, and pilot candidates. No individual scorecards are
+                    shown here; updates will be shared via the admin/shareholder dashboard.
+                  </p>
+                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-900/30 p-4 text-sm text-emerald-100">
+                    <p className="font-semibold text-white">What happens next</p>
+                    <ul className="mt-2 space-y-2 list-disc pl-4 text-emerald-100/80">
+                      <li>Insights roll into the dashboard for trend analysis by department and tenure.</li>
+                      <li>Risk themes inform our policy, review steps, and guardrail backlog.</li>
+                      <li>We will follow up with enablement resources based on the gaps you flagged.</li>
+                    </ul>
                   </div>
-                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-900/30 p-4">
-                    <p className="text-sm text-emerald-100">Adoption readiness</p>
-                    <p className="text-2xl font-semibold text-white">
-                      {form.adoption.automationReady && form.adoption.securityAligned ? 'Ready to pilot' : 'Needs guardrails'}
-                    </p>
-                    <p className="text-xs text-emerald-100/60">Based on your risk acknowledgements</p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={reset}
+                      className="flex items-center gap-2 rounded-xl border border-emerald-500/40 px-4 py-3 text-sm font-semibold text-white transition hover:border-emerald-300"
+                    >
+                      <ChevronLeft className="h-4 w-4" /> Submit another response
+                    </button>
                   </div>
-                </div>
-                <div className="flex flex-wrap gap-2 text-xs text-emerald-100/70">
-                  {badge(form.department)}
-                  {badge(form.location)}
-                  {badge(form.tenure)}
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={reset}
-                    className="flex items-center gap-2 rounded-xl border border-emerald-500/40 px-4 py-3 text-sm font-semibold text-white transition hover:border-emerald-300"
-                  >
-                    <ChevronLeft className="h-4 w-4" /> Start over
-                  </button>
-                  <a
-                    href={`data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(form, null, 2))}`}
-                    download="ai-sentiment-response.json"
-                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-300 px-4 py-3 text-sm font-semibold text-black shadow-[0_10px_40px_-20px_rgba(52,211,153,0.9)] transition hover:shadow-[0_10px_40px_-15px_rgba(52,211,153,1)]"
-                  >
-                    Export answers
-                  </a>
                 </div>
               </StepShell>
             )}
@@ -584,26 +559,28 @@ export function SurveyWizard() {
                 <p className="font-semibold">What to expect</p>
               </div>
               <ul className="mt-3 space-y-2 list-disc pl-5">
-                <li>Scores stay client-side; we only send aggregated insights.</li>
-                <li>We use your role to tailor enablement materials.</li>
-                <li>Never paste confidential data; keep examples high level.</li>
+                <li>Scores stay client-side; we only send aggregated insights to the admin dashboard.</li>
+                <li>We use your role and tenure to tailor enablement priorities - never to rate individuals.</li>
+                <li>Do not paste secrets or customer data. Keep examples high level.</li>
               </ul>
             </div>
             <div className="rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-black to-teal-500/10 p-5 text-sm text-emerald-100/80">
               <div className="flex items-center gap-2 text-white">
                 <TrendingUp className="h-5 w-5 text-emerald-400" />
-                <p className="font-semibold">Live readiness snapshot</p>
+                <p className="font-semibold">Signals we aggregate</p>
               </div>
               <div className="mt-3 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span>Average sentiment</span>
-                  <span className="font-semibold text-white">{summary.average}</span>
+                  <span>Confidence patterns</span>
+                  <span className="font-semibold text-white">Readiness, clarity, safety</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Adoption signals</span>
-                  <span className="font-semibold text-white">
-                    {form.adoption.automationReady && form.adoption.securityAligned ? 'Positive' : 'Needs review'}
-                  </span>
+                  <span>Top blockers</span>
+                  <span className="font-semibold text-white">Data quality, guardrails, oversight</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Enablement needs</span>
+                  <span className="font-semibold text-white">Training, policy clarity, success metrics</span>
                 </div>
               </div>
             </div>
@@ -616,14 +593,10 @@ export function SurveyWizard() {
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-emerald-500/20 pt-4 text-sm">
           <div className="flex items-center gap-2 text-emerald-100/70">
             <ChevronRight className="h-4 w-4" />
-            <span>
-              Step {step + 1} of 5 · {summary.alignment} · {Object.keys(form.sentiment).length}/{
-                likertQuestions.length
-              } ratings
-            </span>
+            <span>Step {step + 1} of {totalSteps}</span>
           </div>
           <div className="flex gap-2">
-            {step > 0 && (
+            {step > 0 && step < totalSteps - 1 && (
               <button
                 type="button"
                 onClick={handleBack}
@@ -632,7 +605,7 @@ export function SurveyWizard() {
                 Back
               </button>
             )}
-            {step < 3 && (
+            {step < totalSteps - 2 && (
               <button
                 type="button"
                 onClick={handleNext}
@@ -642,7 +615,7 @@ export function SurveyWizard() {
                 <ChevronRight className="h-4 w-4" />
               </button>
             )}
-            {step === 3 && (
+            {step === totalSteps - 2 && (
               <button
                 type="button"
                 onClick={handleSubmit}
@@ -651,6 +624,15 @@ export function SurveyWizard() {
               >
                 {submitting ? 'Sending...' : 'Send responses'}
                 <ChevronRight className="h-4 w-4" />
+              </button>
+            )}
+            {step === totalSteps - 1 && (
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-xl border border-emerald-500/40 px-4 py-2 text-sm font-semibold text-white transition hover:border-emerald-300"
+              >
+                Start over
               </button>
             )}
           </div>
